@@ -1,15 +1,14 @@
 import os
 import re
 import json
+import hashlib
+import time
 from google import genai
 from google.genai import types
 from loguru import logger
 
 from src.model import OffertaEnergia
 from .config import config  
-from loguru import logger
-import hashlib
-import time
 
 CACHE_DIR = "cache"
 CACHE_TTL_SECONDS = 24 * 3600  
@@ -86,7 +85,7 @@ class EnergyGeminiExtractor:
         cleaned = re.sub(r"```.*?\n", "", raw_text).replace("```", "").strip()
         return cleaned
 
-    def extract_from_pdf(self, path_to_pdf, use_cache=True, is_debug: bool =False) -> dict:
+    def extract_from_pdf(self, path_to_pdf, is_debug: bool =False) -> dict:
         """Estrae dati strutturati da un PDF."""
         
         if is_debug:
