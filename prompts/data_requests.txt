@@ -1,0 +1,50 @@
+Estrai dal PDF allegato i seguenti valori tecnici dell’offerta luce/gas.
+
+Rispondi esclusivamente con un oggetto JSON valido, senza testo aggiuntivo, commenti o spiegazioni.
+Usa null per i valori non presenti nel documento e il punto come separatore decimale.
+
+Struttura JSON richiesta
+{
+  "prezzo_stimato_offerta_kwh": <numero o null>,
+  "prezzo_stimato_finita_kwh": <numero o null>,
+  "durata_mesi": <numero o null>,
+  "costi_fissi_anno": <numero o null>,
+  "tipologia_formula_offerta": "<standard | ridotta | costante>",
+  "tipologia_formula_finita": "<standard | ridotta | costante>",
+  "fee_offerta_kwh": <numero o null>,
+  "fee_finita_kwh": <numero o null>,
+  "clausole": <stringa o null>
+}
+
+Definizione di tipologia_formula
+
+standard
+Prezzo indicizzato calcolato come:
+PUN Index GME × (1 + perdite di rete) + Fee + Indice GO
+
+ridotta
+Come la standard, senza Indice GO
+
+costante
+Prezzo fisso, non indicizzato, espresso in €/kWh e costante nel tempo
+
+Regola vincolante (obbligatoria)
+
+Se è presente prezzo_stimato_offerta_kwh oppure prezzo_stimato_finita_kwh,
+la relativa tipologia_formula_* deve essere necessariamente "costante".
+Qualsiasi altra combinazione è da considerarsi errata.
+
+Esempio di output JSON valido
+{
+  "nome_offerta": "sunligth"
+  "gestore": "Sorgenia"
+  "prezzo_stimato_offerta_kwh": 0.14,
+  "prezzo_stimato_finita_kwh": null,
+  "durata_mesi": 12,
+  "costi_fissi_anno": 81.03,
+  "tipologia_formula_offerta": "costante",
+  "tipologia_formula_finita": "standard",
+  "fee_offerta_kwh": 0.008,
+  "fee_finita_kwh": 0.03,
+  "clausole": "Uscita non possibile prima di 24 mesi"
+}

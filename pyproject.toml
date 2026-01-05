@@ -5,7 +5,17 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dotenv>=0.9.9",
+    "dynaconf>=3.2.12",
     "google-genai>=1.56.0",
+    "loguru>=0.7.3",
+    "openpyxl>=3.1.5",
     "pandas>=2.3.3",
-    "seaborn>=0.13.2",
+    "requests>=2.32.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ipykernel>=7.1.0",
+    "seaborn>=0.13.2"
 ]
