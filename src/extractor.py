@@ -22,7 +22,7 @@ class EnergyGeminiExtractor:
     def __init__(self, api_key=None, prompt_file=None, model="gemini-2.5-flash"):
         self.api_key = api_key or config.get("GENAI_API_KEY")
         self.prompt_file = prompt_file or config.get("PROMPT_FILE")
-        self.model = model
+        self.model = model or config.get("GENAI_MODEL", "gemini-2.5-flash")
 
         if not self.api_key:
             raise ValueError("GENAI_API_KEY non trovato. Controlla il file .env.")
@@ -34,13 +34,18 @@ class EnergyGeminiExtractor:
         self._load_prompt()
         
     def _cache_key(self, pdf_path: str) -> str:
-        """Genera una chiave di cache unica basata sul file PDF e il prompt."""
+        """Genera una chiave di cache unica basata sul file PDF e il prompt
+        utilizzato.
+        Args:
+            pdf_path (str): Percorso del file PDF.
+        Returns:
+            str: Chiave di cache unica.
+        """
         stat = os.stat(pdf_path)
 
         payload = f"""
         {os.path.basename(pdf_path)}
         {stat.st_size}
-        {stat.st_mtime}
         {self.model}
         {self.prompt_text}
         """
@@ -60,7 +65,7 @@ class EnergyGeminiExtractor:
         if time.time() - os.path.getmtime(path) > CACHE_TTL_SECONDS:
             return None
 
-        logger.info("Risultato caricato da cache")
+        logger.info("Carichiamo da cache...")
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
         
@@ -85,7 +90,7 @@ class EnergyGeminiExtractor:
         cleaned = re.sub(r"```.*?\n", "", raw_text).replace("```", "").strip()
         return cleaned
 
-    def extract_from_pdf(self, path_to_pdf, is_debug: bool =False) -> dict:
+    def extract_from_pdf(self, path_to_pdf, is_debug: bool =False, use_cache: bool = True) -> dict:
         """Estrae dati strutturati da un PDF."""
         
         if is_debug:
@@ -101,21 +106,23 @@ class EnergyGeminiExtractor:
                 "tipologia_formula_finita": "standard",
                 "fee_offerta_kwh": 0.008,
                 "fee_finita_kwh": 0.03,
-                "clausole": "Uscita non possibile prima di 24 mesi"
+                "note": "Uscita non possibile prima di 24 mesi"
                 }
             return OffertaEnergia(**dict_result)
         else:
                 
             if not os.path.exists(path_to_pdf):
                 raise FileNotFoundError(f"File PDF non trovato: {path_to_pdf}")
-
             cache_key = self._cache_key(path_to_pdf)
-            cached = self._load_from_cache(cache_key)
-            if cached is not None:
-                return cached
 
+            if use_cache:
+                cached = self._load_from_cache(cache_key)
+                if cached is not None:
+                    logger.success("Dati caricati dalla cache.")
+                    return OffertaEnergia(**cached)
+                
             uploaded_file = self.client.files.upload(file=path_to_pdf)
-            logger.info(f"File {path_to_pdf} caricato.")
+            logger.success(f"File {path_to_pdf} caricato.")
 
             try:
                 parts = [
@@ -136,13 +143,13 @@ class EnergyGeminiExtractor:
                 result = json.loads(cleaned_text)
 
                 self._save_to_cache(cache_key, result)
-                return  OffertaEnergia(**result)
+                logger.success("Estrazione completata e salvata in cache.")
+                return OffertaEnergia(**result)
 
             finally:
                 self.client.files.delete(name=uploaded_file.name)
 
 
-# --- Esempio di utilizzo ---
 if __name__ == "__main__":
     import sys
 

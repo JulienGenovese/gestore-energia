@@ -6,7 +6,7 @@
 ## Funzionalità principali
 - Estrazione di dati strutturati da file PDF contenenti offerte energetiche.
 - Analisi e confronto delle offerte di energia elettrica e gas.
-- Generazione di report dettagliati con costi stimati e clausole contrattuali.
+- Generazione di report dettagliati con costi stimati e note contrattuali.
 - Cache dei risultati per migliorare le prestazioni.
 
 ## Requisiti

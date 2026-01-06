@@ -9,7 +9,15 @@ class TipoFormula(str, Enum):
     STANDARD = "standard"
     RIDOTTA = "ridotta"
     COSTANTE = "costante"
-
+    
+def return_tipo_formula(tipo: str | None) -> TipoFormula:
+    """Converte una stringa in TipoFormula Enum o None."""
+    if tipo is None:
+        tipo = None
+    else:
+        tipo = TipoFormula(tipo)
+    return tipo
+    
 def calcola_prezzo_energia(pun, fee: float, perdite_rete: float, indice_go: float, tipo="standard"):
     """
     Calcola il prezzo dell'energia basato sulla formula indicizzata.
@@ -73,39 +81,59 @@ class PrezzoLuce(Price):
         logger.info(f"Dati offerta: {self.offerta_energia}")
     
     def _calcola_prezzo_mensile(
-        self,
-        prezzo_stimato_kwh: float | None,
-        fee_kwh: float | None,
-        pun: float,
-        tipo_formula: str | None
-    ) -> float:
+    self,
+    prezzo_stimato_kwh: float | None,
+    fee_kwh: float | None,
+    pun: float,
+    tipo_formula: str | None
+) -> float | None:
+        """
+        Calcola il prezzo mensile dell'offerta luce.
+        Ritorna None se non ci sono dati sufficienti per il calcolo.
+        """
+        
+        if prezzo_stimato_kwh is None and fee_kwh is None:
+            return None
 
-        # Prezzo fisso: non si usa la funzione indicizzata
         if prezzo_stimato_kwh is not None:
             prezzo_kwh = prezzo_stimato_kwh
         else:
-            prezzo_kwh = calcola_prezzo_energia(
-                pun=pun,
-                fee=fee_kwh or 0.0,
-                perdite_rete=self.perdite_rete,
-                indice_go=self.go_index_eur_kwh,
-                tipo=tipo_formula or "standard"
-            )
+            tipo = tipo_formula or "standard"
+            fee = fee_kwh or 0.0
+            
+            try:
+                prezzo_kwh = calcola_prezzo_energia(
+                    pun=pun,
+                    fee=fee,
+                    perdite_rete=self.perdite_rete,
+                    indice_go=self.go_index_eur_kwh,
+                    tipo=tipo
+                )
+            except Exception as e:
+                logger.error("Calcolo prezzo indicizzato fallito: %s", e)
+                return None
 
+            # Se calcolo fallisce → None
             if prezzo_kwh is None:
-                logger.error("Calcolo prezzo indicizzato fallito")
-                raise ValueError("Calcolo prezzo indicizzato fallito")
+                logger.warning("Prezzo indicizzato non disponibile")
+                return None
 
+        # Totale mensile = prezzo_kwh * consumo
         totale = prezzo_kwh * self.consumo_mensile
-        totale += (self.offerta_energia.costi_fissi_anno or 0) / 12
+
+        # Aggiungi costi fissi mensili se presenti
+        costi_fissi_annuali = getattr(self.offerta_energia, "costi_fissi_anno", 0) or 0
+        totale += costi_fissi_annuali / 12
+
         return round(totale, 2)
 
     def calcola_prezzo_offerta(self) -> float:
+
         return self._calcola_prezzo_mensile(
             self.offerta_energia.prezzo_stimato_offerta_kwh,
             self.offerta_energia.fee_offerta_kwh,
             self.pun_index_eur_kwh_mean,
-            TipoFormula(self.offerta_energia.tipologia_formula_offerta)
+            return_tipo_formula(self.offerta_energia.tipologia_formula_offerta)
         )
 
     def calcola_prezzo_finita_medio(self) -> float:
@@ -113,7 +141,7 @@ class PrezzoLuce(Price):
             self.offerta_energia.prezzo_stimato_finita_kwh,
             self.offerta_energia.fee_finita_kwh,
             self.pun_index_eur_kwh_mean,
-            TipoFormula(self.offerta_energia.tipologia_formula_finita)
+            return_tipo_formula(self.offerta_energia.tipologia_formula_finita)
         )
 
     def calcola_prezzo_finita_peggiore(self) -> float:
@@ -121,7 +149,7 @@ class PrezzoLuce(Price):
             self.offerta_energia.prezzo_stimato_finita_kwh,
             self.offerta_energia.fee_finita_kwh,
             self.pun_index_eur_kwh_worst,
-            TipoFormula(self.offerta_energia.tipologia_formula_finita)
+            return_tipo_formula(self.offerta_energia.tipologia_formula_finita)
         )
     def calcola_tutto(self) -> dict:
         """
@@ -129,6 +157,6 @@ class PrezzoLuce(Price):
         """
         return pd.DataFrame([{
             "prezzo_offerta_mensile": self.calcola_prezzo_offerta(),
-            "prezzo_finita_migliore_mensile": self.calcola_prezzo_finita_medio(),
+            "prezzo_finita_medio_mensile": self.calcola_prezzo_finita_medio(),
             "prezzo_finita_peggiore_mensile": self.calcola_prezzo_finita_peggiore()
         }])

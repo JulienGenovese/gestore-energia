@@ -15,7 +15,7 @@ class OffertaEnergia:
     costi_fissi_anno: Optional[float]
     fee_offerta_kwh: Optional[float]
     fee_finita_kwh: Optional[float]
-    clausole: Optional[str]
+    note: Optional[str]
     
     def to_dataframe(self):
         return pd.DataFrame([{
@@ -29,5 +29,5 @@ class OffertaEnergia:
             "costi_fissi_anno": self.costi_fissi_anno,
             "fee_offerta_kwh": self.fee_offerta_kwh,
             "fee_finita_kwh": self.fee_finita_kwh,
-            "clausole": self.clausole
+            "note": self.note
         }])
