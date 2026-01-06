@@ -1,0 +1,7 @@
+/env/keys.env
+/notebooks/
+__pycache__/
+*.pyc
+.vscode/
+/data/
+/cache/
