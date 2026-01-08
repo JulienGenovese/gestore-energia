@@ -21,7 +21,7 @@ class EnergyGeminiExtractor:
 
     def __init__(self, api_key=None, prompt_file=None, model="gemini-2.5-flash"):
         self.api_key = api_key or config.get("GENAI_API_KEY")
-        self.prompt_file = prompt_file or config.get("PROMPT_FILE")
+        self.prompt_file = prompt_file or config.get("PROMPT_LUCE_FILE")
         self.model = model or config.get("GENAI_MODEL", "gemini-2.5-flash")
 
         if not self.api_key:

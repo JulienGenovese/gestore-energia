@@ -72,60 +72,111 @@ class PrezzoGas:
 class PrezzoLuce(Price):
     def __init__(self, offerta_energia: OffertaEnergia):
         self.offerta_energia = offerta_energia
-        self.consumo_mensile = int(config.get("consumption_kwh_monthly", 2500))
-        self.pun_index_eur_kwh_mean = float(config.get("pun_index_eur_kwh_mean", 0.12))
-        self.pun_index_eur_kwh_worst = float(config.get("pun_index_eur_kwh_worst", 0.15))
-        self.go_index_eur_kwh = float(config.get("go_index_eur_kwh", 0.0002))
-        self.perdite_rete = float(config.get("perdite_rete_percent", 0.10))
-        logger.info(f"Configurazione Price: consumo_mensile={self.consumo_mensile}, pun_mean={self.pun_index_eur_kwh_mean}, pun_worst={self.pun_index_eur_kwh_worst}, go_index={self.go_index_eur_kwh}, perdite_rete={self.perdite_rete}")
-        logger.info(f"Dati offerta: {self.offerta_energia}")
-    
+        try:
+            self.consumo_mensile = float(config.get("consumption_kwh_monthly"))
+            self.pun_index_eur_kwh_mean = float(config.get("pun_index_eur_kwh_mean"))
+            self.pun_index_eur_kwh_worst = float(config.get("pun_index_eur_kwh_worst"))
+            self.go_index_eur_kwh = float(config.get("go_index_eur_kwh", 0.0002))
+            self.perdite_rete = float(config.get("perdite_rete_percent", 0.10))
+
+            self.potenza_impegnata = float(config.get("potenza_kw", 3.0))
+            # --- TRASPORTO E CONTATORE ---
+            self.quota_fissa_trasporto_mese = 24 / 12            # €/mese
+            self.quota_potenza_kw_mese = 23 / 12                 # €/kW/mese
+            self.quota_variabile_trasporto_kwh = 0.009           # €/kWh
+
+            # --- ONERI DI SISTEMA ---
+            self.oneri_fissi_mese = 20 / 12                      # €/mese
+            self.oneri_variabili_kwh = 0.040                     # €/kWh
+
+            # --- IMPOSTE ---
+            self.accisa_kwh = 0.0227
+            self.kwh_esenti_accisa_mese = 150
+            self.prima_casa = True if config.get("prima_casa").lower() == "true" else False
+            self.residenza = True if config.get("residenza").lower() == "true" else False
+        except Exception as e:        
+            logger.error(f"Errore durante l'inizializzazione: {e}")
+            raise e
+        logger.info("Inizializzazione PrezzoLuce completata.")
+
+
     def _calcola_prezzo_mensile(
-    self,
-    prezzo_stimato_kwh: float | None,
-    fee_kwh: float | None,
-    pun: float,
-    tipo_formula: str | None
-) -> float | None:
-        """
-        Calcola il prezzo mensile dell'offerta luce.
-        Ritorna None se non ci sono dati sufficienti per il calcolo.
-        """
-        
-        if prezzo_stimato_kwh is None and fee_kwh is None:
+        self,
+        prezzo_stimato_kwh: float | None,
+        fee_kwh: float | None,
+        pun: float,
+        tipo_formula: TipoFormula | None
+    ) -> float | None:
+
+        # -------------------------
+        # 1. PREZZO ENERGIA €/kWh
+        # -------------------------
+        if prezzo_stimato_kwh is not None:
+            prezzo_energia = prezzo_stimato_kwh
+        else:
+            prezzo_energia = calcola_prezzo_energia(
+                pun=pun,
+                fee=fee_kwh or 0.0,
+                perdite_rete=self.perdite_rete,
+                indice_go=self.go_index_eur_kwh,
+                tipo=tipo_formula or TipoFormula.STANDARD
+            )
+
+        if prezzo_energia is None:
             return None
 
-        if prezzo_stimato_kwh is not None:
-            prezzo_kwh = prezzo_stimato_kwh
+        # -------------------------
+        # 2. QUOTE VARIABILI €/mese
+        # -------------------------
+        costo_energia = prezzo_energia * self.consumo_mensile
+        costo_trasporto_var = self.quota_variabile_trasporto_kwh * self.consumo_mensile
+        costo_oneri_var = self.oneri_variabili_kwh * self.consumo_mensile
+
+        # -------------------------
+        # 3. ACCISA (parziale)
+        # -------------------------
+        costo_accisa = self.calcola_accisa()
+
+        # -------------------------
+        # 4. QUOTE FISSE €/mese
+        # -------------------------
+        costo_fissi_vendita = (getattr(self.offerta_energia, "costi_fissi_anno", 0) or 0) / 12
+        costo_trasporto_fisso = (
+            self.quota_fissa_trasporto_mese +
+            self.potenza_impegnata * self.quota_potenza_kw_mese
+        )
+        costo_oneri_fissi = self.oneri_fissi_mese
+
+        # -------------------------
+        # 5. TOTALE
+        # -------------------------
+        totale_netto = (
+            costo_energia +
+            costo_trasporto_var +
+            costo_oneri_var +
+            costo_accisa +
+            costo_fissi_vendita +
+            costo_trasporto_fisso +
+            costo_oneri_fissi
+        )
+
+        totale_ivato = totale_netto * (1 + self.iva)
+
+        return round(totale_ivato, 2)
+
+    def calcola_accisa(self):
+        """Calcola l'accisa mensile in base ai kWh esenti."""
+        if self.prima_casa and self.residenza and self.potenza_impegnata <= 3:
+            kwh_tassati = max(0, self.consumo_mensile - self.kwh_esenti_accisa_mese)
         else:
-            tipo = tipo_formula or "standard"
-            fee = fee_kwh or 0.0
-            
-            try:
-                prezzo_kwh = calcola_prezzo_energia(
-                    pun=pun,
-                    fee=fee,
-                    perdite_rete=self.perdite_rete,
-                    indice_go=self.go_index_eur_kwh,
-                    tipo=tipo
-                )
-            except Exception as e:
-                logger.error("Calcolo prezzo indicizzato fallito: %s", e)
-                return None
+            kwh_tassati = self.consumo_mensile
 
-            # Se calcolo fallisce → None
-            if prezzo_kwh is None:
-                logger.warning("Prezzo indicizzato non disponibile")
-                return None
-
-        # Totale mensile = prezzo_kwh * consumo
-        totale = prezzo_kwh * self.consumo_mensile
-
-        # Aggiungi costi fissi mensili se presenti
-        costi_fissi_annuali = getattr(self.offerta_energia, "costi_fissi_anno", 0) or 0
-        totale += costi_fissi_annuali / 12
-
-        return round(totale, 2)
+        return kwh_tassati * self.accisa_kwh
+    
+    @property
+    def iva(self) -> float:
+        """Restituisce l'IVA applicabile."""
+        return 0.10 if self.residenza else 0.22
 
     def calcola_prezzo_offerta(self) -> float:
 

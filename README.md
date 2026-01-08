@@ -35,7 +35,7 @@
 1. Creare un file `.env` nella directory `env/` e aggiungere le seguenti variabili:
    ```env
    GENAI_API_KEY=<la-tua-chiave-API>
-   PROMPT_FILE=prompts/data_requests.txt
+   PROMPT_FILE=prompts/dati_luce.txt
    ```
 
 2. Assicurarsi che il file di prompt esista nel percorso specificato.

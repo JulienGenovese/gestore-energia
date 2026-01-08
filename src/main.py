@@ -58,15 +58,26 @@ def main():
         action="store_true",
         help="Disabilita l'uso della cache durante l'estrazione"
     )
+    parser.add_argument(
+        "--fornitura",
+        choices=["all", "luce", "gas"],
+        default="all"
+    )
+        
     args = parser.parse_args()
 
     use_cache = not args.no_cache
+    fornitura = args.fornitura
+    
     if not use_cache:
         logger.info("Cache DISABILITATA")
     cartelle = {
         "luce": config.get("path_luce_offers", "data/offerte/luce"),
         "gas": config.get("path_gas_offers", "data/offerte/gas")
     }
+    if fornitura != "all":
+        cartelle = {fornitura: cartelle[fornitura]}
+        
     output_folder = os.path.join("data", "output")
     os.makedirs(output_folder, exist_ok=True)
 
