@@ -1,22 +1,9 @@
-from pyparsing import ABC, abstractmethod
-from src.model import OffertaEnergia
-from .config import config  
+from ..model import Offerta, TipoFormula
+from .abc import return_tipo_formula
+from ..config import config  
 from loguru import logger
-from enum import Enum
-import pandas as pd
 
-class TipoFormula(str, Enum):
-    STANDARD = "standard"
-    RIDOTTA = "ridotta"
-    COSTANTE = "costante"
-    
-def return_tipo_formula(tipo: str | None) -> TipoFormula:
-    """Converte una stringa in TipoFormula Enum o None."""
-    if tipo is None:
-        tipo = None
-    else:
-        tipo = TipoFormula(tipo)
-    return tipo
+
     
 def calcola_prezzo_energia(pun, fee: float, perdite_rete: float, indice_go: float, tipo="standard"):
     """
@@ -49,28 +36,8 @@ def calcola_prezzo_energia(pun, fee: float, perdite_rete: float, indice_go: floa
         logger.error(f"Errore nel calcolo: {e}")
         return None
     
-class Price(ABC):
-    @abstractmethod
-    def _calcola_prezzo_mensile(self, *args, **kwargs) -> float:
-        ...
-    @abstractmethod
-    def calcola_prezzo_offerta(self) -> float:
-        ...
-    @abstractmethod
-    def calcola_prezzo_finita_medio(self) -> float:
-        ...
-    @abstractmethod
-    def calcola_prezzo_finita_peggiore(self) -> float:
-        ...
-    @abstractmethod
-    def calcola_tutto(self) -> dict:
-        ...
-        
-class PrezzoGas:
-    pass
-
-class PrezzoLuce(Price):
-    def __init__(self, offerta_energia: OffertaEnergia):
+class PrezzoLuce(ABCPrice):
+    def __init__(self, offerta_energia: Offerta):
         self.offerta_energia = offerta_energia
         try:
             self.consumo_mensile = float(config.get("consumption_kwh_monthly"))
@@ -202,12 +169,3 @@ class PrezzoLuce(Price):
             self.pun_index_eur_kwh_worst,
             return_tipo_formula(self.offerta_energia.tipologia_formula_finita)
         )
-    def calcola_tutto(self) -> dict:
-        """
-        Calcola tutti gli scenari di prezzo mensile.
-        """
-        return pd.DataFrame([{
-            "prezzo_offerta_mensile": self.calcola_prezzo_offerta(),
-            "prezzo_finita_medio_mensile": self.calcola_prezzo_finita_medio(),
-            "prezzo_finita_peggiore_mensile": self.calcola_prezzo_finita_peggiore()
-        }])

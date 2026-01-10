@@ -8,7 +8,7 @@ from google.genai import types
 from loguru import logger
 
 from src.model import OffertaEnergia
-from .config import config  
+from ..config import config  
 
 CACHE_DIR = "cache"
 CACHE_TTL_SECONDS = 24 * 3600  

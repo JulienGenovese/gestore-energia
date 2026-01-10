@@ -3,9 +3,9 @@ import argparse
 import sys
 import pandas as pd
 from loguru import logger
-from .extractor import EnergyGeminiExtractor
+from .data_extractor.extractor import EnergyGeminiExtractor
 from .excel_writer import ExcelFormatter
-from .price import PrezzoLuce, PrezzoGas
+from .prezzo.prezzo_luce import PrezzoLuce, PrezzoGas
 from .config import config
 # Configura logger
 logger.remove()
