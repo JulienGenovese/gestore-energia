@@ -26,7 +26,6 @@ class CalcolatoreMorfologicoC:
         """
         tipo = tipo_territorio.upper()
         if tipo not in cls.VALORI_C:
-            # Se l'utente scrive male, logghiamo un warning e usiamo la pianura
             return cls.VALORI_C["PIANURA"]
             
         return cls.VALORI_C[tipo]
@@ -82,10 +81,8 @@ class CalcolatoreAccisaGas:
         c_mese = Decimal(str(consumo_mensile))
         peso_mese = self.PESI_MENSILI.get(mese_riferimento)
         
-        # 1. Inferenziazione: Consumo Annuo Stimato = Consumo Mese / Peso Mese
         consumo_annuo_stimato = c_mese / peso_mese
         
-        # 2. Simulazione anno solare per riempire gli scaglioni
         accisa_annua_totale = Decimal('0')
         progressivo_annuo = Decimal('0')
         
@@ -96,7 +93,6 @@ class CalcolatoreAccisaGas:
             accisa_annua_totale += accisa_mese
             progressivo_annuo += consumo_del_mese
 
-        # 3. Media
         accisa_media_mensile = accisa_annua_totale / Decimal('12')
 
         return {
@@ -131,8 +127,6 @@ class CalcolatoreAccisaGas:
         return totale
     
     
-    
-from decimal import Decimal, ROUND_HALF_UP
 
 class PrezzoGas(ABCPrice):
     def __init__(self, offerta_gas: Offerta):
@@ -213,3 +207,6 @@ class PrezzoGas(ABCPrice):
             "totale_mensile_medio": float(self._calcola_prezzo_finito(psv_medio)),
             "dettaglio_annuo": self.get_quota_fiscale_media()["consumo_annuo_stimato"]
         }
+        
+if __name__ == "__main__":
+    print("Esegui i test per verificare il funzionamento.")
