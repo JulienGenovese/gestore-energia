@@ -5,30 +5,10 @@ from src.prezzo.abc import ABCPrice
 from decimal import Decimal, ROUND_HALF_UP
 from ..config import config  
 
-class CalcolatoreMorfologicoC:
-    """
-    Fornisce un valore approssimato del Coefficiente C basato sulla 
-    morfologia del territorio, utile se l'utente non ha la bolletta sottomano.
-    """
-    
-    VALORI_C = {
-        "MARE":     Decimal("1.027"), # Altitudine ~0m (Pressione massima)
-        "PIANURA":  Decimal("1.015"), # Altitudine ~100-200m
-        "COLLINA":  Decimal("0.985"), # Altitudine ~400-500m
-        "MONTAGNA": Decimal("0.940")  # Altitudine > 800m (Pressione minima)
-    }
 
-    @classmethod
-    def ottieni_c(cls, tipo_territorio: str) -> Decimal:
-        """
-        Ritorna il coefficiente C stimato. 
-        Default su PIANURA se il parametro è errato.
-        """
-        tipo = tipo_territorio.upper()
-        if tipo not in cls.VALORI_C:
-            return cls.VALORI_C["PIANURA"]
-            
-        return cls.VALORI_C[tipo]
+# TODO: verifica cacolo dell'accisa
+# TODO: calcolo per altre tipologie di offerte di gas
+# TODO: verifica calcolo complessivo
 
 class CalcolatoreAccisaGas:
     """
@@ -126,47 +106,91 @@ class CalcolatoreAccisaGas:
             if lim is not None: lim_prec = lim
         return totale
     
+class CalcolatoreTrasportoGas:
+    """
+    Stima i costi di trasporto + oneri di sistema.
+    Allineato alle macro-zone fiscali (Centro-Nord e Sud-Mezzogiorno).
+    """
+
+    # nota: mega approssimazione per evitare di dover gestire troppe zone
+    # in realta' le tariffe variano per zona piu' dettagliate
+    QUOTE_FISSE_BASE = {
+        "CENTRO_NORD":      Decimal("72.50"),
+        "SUD_MEZZOGIORNO":  Decimal("79.40")
+    }
+
+    QUOTA_VARIABILE_RETE = Decimal("0.115")
+    QUOTA_ONERI = Decimal("0.010")
     
 
+    def __init__(self, zona: str = "CENTRO_NORD"):
+        self.zona = zona.upper()
+        if self.zona not in self.QUOTE_FISSE_BASE:
+            self.zona = "CENTRO_NORD"
+        logger.warning("Approssimazione grezza fatta per consumi annuali intorno ai 1000 smc e in sole 2 fasce zonali.")
+
+    def stima_costo_mensile(self, consumo_mensile: Decimal) -> Decimal:
+        """
+        Calcola la quota fissa mensile e la quota variabile su base Smc.
+        """
+        quota_fissa_mensile = self.QUOTE_FISSE_BASE[self.zona] / Decimal("12")
+        costo_variabile_smc = self.QUOTA_VARIABILE_RETE + self.QUOTA_ONERI
+        quota_variabile = consumo_mensile * costo_variabile_smc
+
+        return (quota_fissa_mensile + quota_variabile).quantize(
+            Decimal("0.01"),
+            ROUND_HALF_UP
+        )
+        
+        
 class PrezzoGas(ABCPrice):
     def __init__(self, offerta_gas: Offerta):
         self.offerta_gas = offerta_gas
-        # Inizializziamo il calcolatore fiscale (quello con i pesi mensili)
-        zona = config.get("zona_geografica")
-        self.calcolatore_fiscale = CalcolatoreAccisaGas(zona=zona)
-        
-        # Dati base
+        self.zona_geografica = config.get("zona_geografica")
+        self.is_residente = config.get("residenza", "true").lower() == "true"
         self.consumo_mensile = Decimal(str(config.get("consumption_smc_monthly")))
         self.mese_rif = int(config.get("mese_riferimento", 1))
-        self.is_residente = config.get("residenza", "true").lower() == "true"
-        
-        # Parametri tecnici
-        self.coeff_c = Decimal(str(config.get("coefficiente_c", "1.0")))
-        self.pcs_ratio = Decimal(str(config.get("pcs", "0.03852"))) / Decimal("0.03852")
+        self.morfologia_territorio = config.get("morfologia_territorio", "PIANURA")
 
+        # Parametri tecnici
+        self.pcs_ratio = Decimal(str(config.get("pcs", "0.03852"))) / Decimal("0.03852")
+        
+    @property
+    def accisa_mensile_media(self) -> CalcolatoreAccisaGas:
+        ca = CalcolatoreAccisaGas(zona=self.zona_geografica)   
+        stima_accisa_media = ca.stima_accisa_media(
+            float(self.consumo_mensile),
+            self.mese_rif
+        )
+        return stima_accisa_media
+
+    @property
+    def trasporto_oneri_mensile(self) -> Decimal:
+        ct = CalcolatoreTrasportoGas(
+            zona=self.zona_geografica)
+        return ct.stima_costo_mensile(self.consumo_mensile)
+    
     def get_quota_materia(self, psv_val: Decimal) -> Decimal:
         """Calcola il costo della materia prima (variabile + fisso)"""
         fee = Decimal(str(getattr(self.offerta_gas, "fee_offerta_smc", 0) or 0))
-        prezzo_smc = (psv_val + fee) * self.coeff_c * self.pcs_ratio
+        #TODO: capire se e' giusto che venga calcolato cosi' o ci sono altri modi
+        prezzo_smc = (psv_val + fee)* self.pcs_ratio
         
         costo_var = prezzo_smc * self.consumo_mensile
-        costo_fiss = Decimal(str(getattr(self.offerta_gas, "costi_fissi_anno", 0) or 0)) / 12
+        costo_fiss = self.offerta_gas.costi_fissi_anno / 12
         return costo_var + costo_fiss
 
     def get_quota_trasporto_e_oneri(self) -> Decimal:
         """Calcola i costi di rete e oneri di sistema (stabiliti da ARERA)"""
-        # Valori standard (70€ trasporto + 40€ oneri fissi annui / 0.045 e 0.030 variabili)
-        fissi = (Decimal("70.00") + Decimal("40.00")) / 12
-        variabili = (Decimal("0.045") + Decimal("0.030")) * self.consumo_mensile
-        return fissi + variabili
+        calcolatore = CalcolatoreTrasportoGas(zona=self.zona_geografica)
+        return calcolatore.stima_costo_mensile(self.consumo_mensile)        
 
     def get_quota_fiscale_media(self) -> dict:
         """
         Usa l'inferenza per calcolare l'accisa media e il tasso IVA medio proiettato.
         """
-        stima = self.calcolatore_fiscale.stima_accisa_media(float(self.consumo_mensile), self.mese_rif)
-        accisa_media = Decimal(str(stima["accisa_media_mensile"]))
-        consumo_annuo = Decimal(str(stima["consumo_annuo_inferred"]))
+        accisa_media = self.accisa_mensile_media
+        consumo_annuo = self.consumo_mensile * 12
 
         # Calcolo tasso IVA medio (proiettato su base annua per residenti)
         if not self.is_residente:
@@ -188,7 +212,7 @@ class PrezzoGas(ABCPrice):
         
         # 1. Recupero le singole componenti
         materia = self.get_quota_materia(psv)
-        trasporto_oneri = self.get_quota_trasporto_e_oneri()
+        trasporto_oneri = self.trasporto_oneri_mensile
         fisco = self.get_quota_fiscale_media()
         
         # 2. Somma imponibile (Materia + Rete + Accisa)
@@ -209,4 +233,18 @@ class PrezzoGas(ABCPrice):
         }
         
 if __name__ == "__main__":
-    print("Esegui i test per verificare il funzionamento.")
+    # Creazione di un'istanza di Offerta per il Mercato Libero
+    offerta_esempio = Offerta(
+        nome_offerta="Trend Casa Gas",
+        gestore="EcoEnergy S.p.A.",
+        prezzo_stimato_offerta=None,
+        prezzo_stimato_finita=None,
+        tipologia_formula_offerta="Standard",
+        tipologia_formula_finita="Standard",
+        durata_mesi=12,
+        costi_fissi_anno=102.0,
+        fee_offerta=0.10,
+        fee_finita=0.14,
+        note="Offerta indicizzata al PSV_da mensile con pagamento SDD e bolletta web."
+    )
+    print(CalcolatoreTrasportoGas(zona="CENTRO_NORD").stima_costo_mensile(Decimal("83.33")))
