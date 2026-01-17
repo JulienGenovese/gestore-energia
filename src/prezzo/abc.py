@@ -1,5 +1,5 @@
 import pandas as pd
-from pyparsing import ABC, abstractmethod
+from abc import ABC, abstractmethod
 from enum import Enum
 
 from src.model import TipoFormula

@@ -1,5 +1,5 @@
 from ..model import Offerta, TipoFormula
-from .abc import return_tipo_formula
+from .abc import ABCPrice, return_tipo_formula
 from ..config import config  
 from loguru import logger
 
@@ -71,8 +71,8 @@ class PrezzoLuce(ABCPrice):
         self,
         prezzo_stimato_kwh: float | None,
         fee_kwh: float | None,
-        pun: float,
-        tipo_formula: TipoFormula | None
+        pun: float = None,
+        tipo_formula: TipoFormula = None
     ) -> float | None:
 
         # -------------------------
