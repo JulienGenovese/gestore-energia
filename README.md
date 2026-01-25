@@ -45,7 +45,7 @@ Il progetto utilizza file `.env` per la configurazione. Sono già presenti templ
 Contiene la chiave API di Google Gemini necessaria per far funzionare il modello di estrazione:
 
 ```env
-GENAI_API_KEY=AIzaSyBRPOnGWLXjfeXOci_m0vEkFxCR3IgRtP8
+GENAI_API_KEY=<mykey>
 ```
 
 **Come ottenere la chiave API:**
