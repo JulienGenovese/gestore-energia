@@ -51,30 +51,16 @@ class CalcolatoreAccisaGas:
             raise ValueError(f"Zona non valida. Scegli tra: {list(self.TARIFFE_ACCISA.keys())}")
         self.scaglioni = self.TARIFFE_ACCISA[zona]
 
-    def stima_accisa_media(self, consumo_mensile: float, mese_riferimento: int) -> float:
-        """
-        :param consumo_mensile: Smc consumati nel mese indicato
-        :param mese_riferimento: Il mese (1-12) a cui si riferisce il consumo
-        :return: Accisa media mensile
-        """
-        c_mese = Decimal(str(consumo_mensile))
-        peso_mese = self.PESI_MENSILI.get(mese_riferimento)
-        
-        consumo_annuo_stimato = c_mese / peso_mese
-        
-        accisa_annua_totale = Decimal('0')
-        progressivo_annuo = Decimal('0')
-        
-        for m in range(1, 13):
-            consumo_del_mese = consumo_annuo_stimato * self.PESI_MENSILI[m]
-            
-            accisa_mese = self._calcola_accisa_puntuale(consumo_del_mese, progressivo_annuo)
-            accisa_annua_totale += accisa_mese
-            progressivo_annuo += consumo_del_mese
+    def stima_accisa_media(self, consumo_mensile_smc, mese_rif, consumo_annuo_reale=None):
+        if consumo_annuo_reale:
+            consumo_annuo = Decimal(str(consumo_annuo_reale))
+        else:
+            c_mese = Decimal(str(consumo_mensile_smc))
+            peso = self.PESI_MENSILI[mese_rif]
+            consumo_annuo = c_mese / peso
 
-        accisa_media_mensile = accisa_annua_totale / Decimal('12')
-
-        return accisa_media_mensile
+        accisa_tot = self._calcola_accisa_puntuale(consumo_annuo, Decimal("0"))
+        return (accisa_tot / 12).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
     def _calcola_accisa_puntuale(self, c_mese, c_progressivo) -> Decimal:
         restante = c_mese
@@ -100,6 +86,7 @@ class CalcolatoreAccisaGas:
             if lim is not None: lim_prec = lim
         return totale
     
+
 class CalcolatoreTrasportoGas:
     """
     Stima i costi di trasporto + oneri di sistema.
@@ -134,56 +121,64 @@ class CalcolatoreTrasportoGas:
             Decimal("0.01"),
             ROUND_HALF_UP
         )
-            
+
+         
+def calcola_iva_annua(imponibile_annuo, consumo_annuo, residente=True):
+    if not residente:
+        return imponibile_annuo * Decimal("0.22")
+
+    soglia = Decimal("480")
+
+    if consumo_annuo <= soglia:
+        return imponibile_annuo * Decimal("0.10")
+
+    quota10 = imponibile_annuo * (soglia / consumo_annuo)
+    quota22 = imponibile_annuo - quota10
+
+    return quota10 * Decimal("0.10") + quota22 * Decimal("0.22")         
+         
+   
 class PrezzoGas(ABCPrice):
-    def __init__(self, offerta_gas: Offerta):
-        self.offerta_gas = offerta_gas
+    def __init__(self, offerta_energia: Offerta):
+        super().__init__(offerta_energia)
         self.zona_geografica = config.get("zona_geografica")
         self.is_residente = config.get("residenza", "true").lower() == "true"
-        self.consumo_mensile = Decimal(str(config.get("consumption_smc_monthly")))
+        self.consumo_mensile_smc = Decimal(str(config.get("consumption_smc_monthly")))
         self.mese_rif = int(config.get("mese_riferimento", 1))
-
+        self.consumo_annuo_smc = config.get("consumption_smc_yearly")
         # Parametri tecnici
-        self.pcs_ratio = Decimal(str(config.get("pcs", "0.03852"))) / Decimal("0.03852")
-        self.psv_medio = Decimal(str(config.get("psv_eur_smc", "0.0")))
+        
+        self.pcs_ratio = Decimal(str(self.pcs_locale_gj_smc)) / Decimal(str(self.pcs_standard_gj_smc))
+        self.c_coeff = Decimal(str(config.get("c_coefficiente", "1.0")))
+        self.psv_medio = Decimal(str(config.get("psv_eur_smc")))
         self.psv_worst = Decimal(str(config.get("psv_eur_smc_worst", "0.0")))
         logger.warning("Approssimazione del trasporto grezza fatta per consumi annuali intorno ai 1000 smc e in sole 2 fasce zonali.")
-
+    
     @property
-    def accisa_mensile_media(self) -> CalcolatoreAccisaGas:
-        """
-        Calcola l'accisa media mensile usando l'inferenza.
-        """
-        ca = CalcolatoreAccisaGas(zona=self.zona_geografica)   
-        stima_accisa_media = ca.stima_accisa_media(
-            float(self.consumo_mensile),
-            self.mese_rif
-        )
-        return stima_accisa_media
+    def pcs_standard_gj_smc(self) -> Decimal:
+        """Restituisce il potere calorifico superiore standard in GJ/Smc"""
+        return Decimal("0.03852")
+    
+    @property
+    def pcs_locale_gj_smc(self) -> Decimal:
+        """Restituisce il potere calorifico superiore locale in GJ/Smc"""
+        return Decimal(str(config.get("pcs_locale_gj_smc")))
 
     @property
     def trasporto_oneri_mensile(self) -> Decimal:
         """Calcola i costi di trasporto e oneri di sistema mensili"""
-        ct = CalcolatoreTrasportoGas(
-            zona=self.zona_geografica)
-        return ct.stima_costo_mensile(self.consumo_mensile)
+        ct = CalcolatoreTrasportoGas()
+        return ct.stima_costo_mensile(self.consumo_mensile_smc)
+    
+    def stima_accisa_media(
+                           self,
+                           zona: str,
+                           consumo_mensile_smc: float, 
+                           mese_rif: int, 
+                           consumo_annuo_reale: float = None):
+        ca = CalcolatoreAccisaGas(zona=zona)
+        return ca.stima_accisa_media(consumo_mensile_smc, mese_rif, consumo_annuo_reale=consumo_annuo_reale)
         
-    @property 
-    def iva_mensile_media(self) -> float:
-        """
-        Usa l'inferenza per calcolare l'accisa media e il tasso IVA medio proiettato.
-        """
-        consumo_annuo = self.consumo_mensile * 12
-
-        # Calcolo tasso IVA medio (proiettato su base annua per residenti)
-        if not self.is_residente:
-            tasso_iva = Decimal("0.22")
-        else:
-            # 10% fino a 480 Smc/anno, resto al 22%
-            quota_10 = min(Decimal("1.0"), Decimal("480") / consumo_annuo) if consumo_annuo > 0 else Decimal("1.0")
-            tasso_iva = (quota_10 * Decimal("0.10")) + ((1 - quota_10) * Decimal("0.22"))
-            
-        return tasso_iva
         
     def get_prezzo_materia_smc(
                              self, 
@@ -192,71 +187,83 @@ class PrezzoGas(ABCPrice):
                              psv_val: float = 0.0,
                              tipo_formula: TipoFormula = None
                              ) -> Decimal:
-        """Calcola il costo della materia prima (variabile + fisso)"""
+        """Calcola il costo della materia prima (variabile + fisso)
+        Viene calcolato come: 
+        - Se formula COSTANTE: uso il prezzo_stimato_smc
+        - Se formula INDICIZZATA: uso psv_val * pcs_ratio + fee_s
+        """
+        if fee_smc is None and prezzo_stimato_smc is None:
+            return None
         
-        assert (fee_smc is None) != (prezzo_stimato_smc is None), \
-            "Devi fornire esattamente uno tra fee_smc e prezzo_stimato_smc" 
         fee_smc = Decimal(str(fee_smc)) if fee_smc is not None else None
         prezzo_stimato_smc = Decimal(str(prezzo_stimato_smc)) if prezzo_stimato_smc is not None else None
         
         if tipo_formula == TipoFormula.COSTANTE:
             prezzo_smc = prezzo_stimato_smc
         else:
-            prezzo_smc = psv_val * self.pcs_ratio + fee_smc 
-        prezzo_mensile = prezzo_smc * self.consumo_mensile
+            prezzo_smc = psv_val * self.pcs_ratio * self.c_coeff  + fee_smc 
+        print("-------")
+        print("materia:", prezzo_smc)
+        print("---")
+        prezzo_mensile = prezzo_smc * self.consumo_mensile_smc
+        
         return prezzo_mensile.quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-
-    def _calcola_prezzo_mensile(self, 
-                                fee_smc: Decimal = None,
-                                prezzo_stimato_smc: Decimal = None,
-                                psv_val: float = 0.0,
-                                tipo_formula: TipoFormula = None
-                                ) -> Decimal:
-        """Mette assieme i pezzi per calcolare il totale mensile ivato"""
-        prezzo_mensile_materia = self.get_prezzo_materia_smc(
-            fee_smc=fee_smc,
-            prezzo_stimato_smc=prezzo_stimato_smc,
-            psv_val=Decimal(str(psv_val)),
-            tipo_formula=tipo_formula,
+    def _calcola_prezzo_mensile(self, fee_smc=None, prezzo_stimato_smc=None,
+                                psv_val=0, costo_fisso_annuo=None,
+                                tipo_formula=None):
+        if fee_smc is None and prezzo_stimato_smc is None:
+            return None
+        materia = self.get_prezzo_materia_smc(
+            fee_smc, prezzo_stimato_smc, Decimal(str(psv_val)), tipo_formula
         )
-        
-        # 1. Recupero le singole componenti
-        trasporto_oneri = self.trasporto_oneri_mensile
-        iva = self.iva_mensile_media
-        accisa = self.accisa_mensile_media
-        
-        # 2. Somma imponibile (Materia + Rete + Accisa)
-        imponibile = prezzo_mensile_materia + trasporto_oneri + accisa
-        
-        # 3. Applicazione IVA
-        totale = imponibile * (1 + iva)
-        
-        return totale.quantize(Decimal("0.01"), ROUND_HALF_UP)
 
-    def calcola_prezzo_offerta(self):
-        return self._calcola_prezzo_mensile(
-            fee_smc=self.offerta_gas.fee_offerta,
-            prezzo_stimato_smc=self.offerta_gas.prezzo_stimato_offerta,
-            psv_val=self.psv_medio,
-            tipo_formula=self.offerta_gas.tipologia_formula_offerta
-        )
+        trasporto = self.trasporto_oneri_mensile
+        accisa = self.stima_accisa_media(zona=self.zona_geografica,
+                                         consumo_mensile_smc=self.consumo_mensile_smc,
+                                         mese_rif=self.mese_rif,
+                                         consumo_annuo_reale=self.consumo_annuo_smc,
+                                         )
+
+        costo_fissi_vendita = Decimal(str(costo_fisso_annuo or 0)) / 12
+
+        imponibile_mese = materia + trasporto + accisa + costo_fissi_vendita
+
+        consumo_annuo = Decimal(str(self.consumo_annuo_smc))
+        imponibile_annuo = imponibile_mese * 12
+
+        iva_annua = calcola_iva_annua(imponibile_annuo, consumo_annuo, self.is_residente)
+
+        totale_mensile = (imponibile_annuo + iva_annua) / 12
+
+        return totale_mensile.quantize(Decimal("0.01"), ROUND_HALF_UP)
     
+    def calcola_prezzo_offerta(self):
+            return self._calcola_prezzo_mensile(
+                fee_smc=self.offerta_energia.fee_offerta,
+                prezzo_stimato_smc=self.offerta_energia.prezzo_fisso_offerta,
+                psv_val=self.psv_medio,
+                costo_fisso_annuo=self.offerta_energia.costi_fissi_anno,
+                tipo_formula=self.offerta_energia.tipologia_formula_offerta
+            )
+        
     def calcola_prezzo_finita_medio(self) -> float:
         return self._calcola_prezzo_mensile(
-            fee_smc=self.offerta_gas.fee_finita,
-            prezzo_stimato_smc=self.offerta_gas.prezzo_stimato_finita,
+            fee_smc=self.offerta_energia.fee_finita,
+            prezzo_stimato_smc=self.offerta_energia.prezzo_fisso_finita,
             psv_val=self.psv_medio,
-            tipo_formula=self.offerta_gas.tipologia_formula_finita
+            costo_fisso_annuo=self.offerta_energia.costi_fissi_anno,
+            tipo_formula=self.offerta_energia.tipologia_formula_finita
         )
         
         
     def calcola_prezzo_finita_peggiore(self) -> float:
         return self._calcola_prezzo_mensile(
-            fee_smc=self.offerta_gas.fee_finita,
-            prezzo_stimato_smc=self.offerta_gas.prezzo_stimato_finita,
+            fee_smc=self.offerta_energia.fee_finita,
+            prezzo_stimato_smc=self.offerta_energia.prezzo_fisso_finita,
+            costo_fisso_annuo=self.offerta_energia.costi_fissi_anno,
             psv_val=self.psv_worst,
-            tipo_formula=self.offerta_gas.tipologia_formula_finita
+            tipo_formula=self.offerta_energia.tipologia_formula_finita
         )
         
     
@@ -268,23 +275,23 @@ if __name__ == "__main__":
         gestore="Sorgenia S.p.A.",
         
         # Se l'offerta è indicizzata, usiamo le FEE e lasciamo il PREZZO STIMATO a None
-        prezzo_stimato_offerta=None, 
-        prezzo_stimato_finita=None,
+        prezzo_fisso_offerta=0.37, 
+        prezzo_fisso_finita=None,
         
-        tipologia_formula_offerta="Indicizzata PSV",
-        tipologia_formula_finita="Indicizzata PSV + Oneri",
+        tipologia_formula_offerta="costante",
+        tipologia_formula_finita="standard",
         
         durata_mesi=12,
-        costi_fissi_anno=96.90,  # Corrisponde alla quota fissa (QVD)
+        costi_fissi_anno=102,  # Corrisponde alla quota fissa (QVD)
         
         # Qui inseriamo lo spread (la fee) sopra l'indice di mercato
-        fee_offerta=0.41,        # fee_smc (es. 0.15 €/SMC)
-        fee_finita=0.41,         # fee comprensiva di eventuali perdite o margini extra
+        fee_offerta=None,        # fee_smc (es. 0.15 €/SMC)
+        fee_finita=0.15,         # fee comprensiva di eventuali perdite o margini extra
         
         note="Offerta con rata costante basata sul PSV. Include sconto fedeltà."
     )
-    print(CalcolatoreTrasportoGas(zona="CENTRO_NORD").stima_costo_mensile(Decimal("83.33")))
-    print(CalcolatoreAccisaGas(zona="CENTRO_NORD").stima_accisa_media(83.33, 1))
+    print(CalcolatoreTrasportoGas().stima_costo_mensile(Decimal("83.33")))
+    print(CalcolatoreAccisaGas().stima_accisa_media(83.33, 1))
     
     prezzo_gas = PrezzoGas(offerta_esempio)
     print("Calcolo Prezzi Gas:")

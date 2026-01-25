@@ -28,6 +28,12 @@ def parse_arguments():
         choices=["all", "luce", "gas"],
         default="all"
     )
+    parser.add_argument(
+        "--offerta",
+        type=str,
+        default=None,
+        help="Nome dell'offerta specifica da elaborare"
+    )
         
     args = parser.parse_args()
     return args
@@ -92,7 +98,7 @@ def compute_price(dati: pd.DataFrame, tipo: str) -> DatiPrezzo | None:
         return result
     except Exception as e:
         logger.error(f"Errore durante il calcolo dei prezzi: {e}")
-        return None
+        raise e
 
 def process_file(pdf_path: str, tipo: str, use_cache: bool = True) -> pd.DataFrame | None:
     """
@@ -118,12 +124,10 @@ def process_file(pdf_path: str, tipo: str, use_cache: bool = True) -> pd.DataFra
     if result is None:
         return None
     result_df = result.to_dataframe()
-    df_dati_offerta.to_csv("debug_input.csv", index=False)
-    result_df.to_csv("debug_result.csv", index=False)
-    import sys; sys.exit(0)
     df_dati_offerta = df_dati_offerta.merge(result_df, 
                                             on=["nome_offerta", "gestore"],
                                             how="left")
+
     return df_dati_offerta
 
 def build_output_dataframe(df: pd.DataFrame,output_folder: str, output_file: str) -> None:
@@ -154,6 +158,7 @@ def main():
 
     use_cache = not args.no_cache
     fornitura = args.fornitura
+    offerta_filtro = args.offerta
     cartelle, output_folder = validate_folder(use_cache, fornitura)
     
     for tipo, folder in cartelle.items():
@@ -161,6 +166,9 @@ def main():
         pdf_files = [f for f in os.listdir(folder) if f.lower().endswith(".pdf")]
         all_dfs = []
         for pdf_file in pdf_files:
+            if offerta_filtro is not None and offerta_filtro.lower() != pdf_file.lower():
+                logger.info(f"Saltando file (filtro offerta): {pdf_file}")
+                continue
             pdf_path = os.path.join(folder, pdf_file)
             logger.info(f"Elaborazione file: {pdf_path}")
             df = process_file(pdf_path, tipo, use_cache=use_cache)

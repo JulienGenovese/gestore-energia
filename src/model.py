@@ -14,8 +14,8 @@ class DfDict(BaseModel):
 class Offerta(DfDict):
     nome_offerta: str
     gestore: str
-    prezzo_stimato_offerta: Optional[float] = None
-    prezzo_stimato_finita: Optional[float] = None
+    prezzo_fisso_offerta: Optional[float] = None
+    prezzo_fisso_finita: Optional[float] = None
     tipologia_formula_finita: Optional[str] = None
     tipologia_formula_offerta: Optional[str] = None
     durata_mesi: Optional[int] = None

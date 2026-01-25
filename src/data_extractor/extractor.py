@@ -43,8 +43,8 @@ class DebugProvider:
         return {
             "nome_offerta": "NEXTENERGYSMARTLUCE",
             "gestore": "Sorgenia",
-            "prezzo_stimato_offerta_kwh": 0.14,
-            "prezzo_stimato_finita_kwh": None,
+            "prezzo_fisso_offerta_kwh": 0.14,
+            "prezzo_fisso_offerta_kwh": None,
             "durata_mesi": 12,
             "costi_fissi_anno": 81.03,
             "tipologia_formula_offerta": "costante",

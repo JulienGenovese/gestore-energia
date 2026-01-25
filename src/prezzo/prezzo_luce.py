@@ -38,7 +38,7 @@ def calcola_prezzo_energia(pun, fee: float, perdite_rete: float, indice_go: floa
     
 class PrezzoLuce(ABCPrice):
     def __init__(self, offerta_energia: Offerta):
-        self.offerta_energia = offerta_energia
+        super().__init__(offerta_energia)
         try:
             self.consumo_mensile = float(config.get("consumption_kwh_monthly"))
             self.pun_index_eur_kwh_mean = float(config.get("pun_index_eur_kwh_mean"))
@@ -69,17 +69,24 @@ class PrezzoLuce(ABCPrice):
 
     def _calcola_prezzo_mensile(
         self,
-        prezzo_stimato_kwh: float | None,
+        prezzo_fisso_kwh: float | None,
         fee_kwh: float | None,
+        costo_fisso_anno: float | None,
         pun: float = None,
-        tipo_formula: TipoFormula = None
+        tipo_formula: TipoFormula = None,
+        iva: bool = False,
     ) -> float | None:
 
+        logger.info("prezzo_fisso_kwh: {}, fee_kwh: {}, costo_fisso_anno: {}, pun: {}, tipo_formula: {}".format(
+            prezzo_fisso_kwh, fee_kwh, costo_fisso_anno, pun, tipo_formula
+        ))
         # -------------------------
         # 1. PREZZO ENERGIA €/kWh
         # -------------------------
-        if prezzo_stimato_kwh is not None:
-            prezzo_energia = prezzo_stimato_kwh
+        if prezzo_fisso_kwh is None and fee_kwh is None:
+            return None
+        if prezzo_fisso_kwh is not None:
+            prezzo_energia = prezzo_fisso_kwh
         else:
             prezzo_energia = calcola_prezzo_energia(
                 pun=pun,
@@ -87,10 +94,11 @@ class PrezzoLuce(ABCPrice):
                 perdite_rete=self.perdite_rete,
                 indice_go=self.go_index_eur_kwh,
                 tipo=tipo_formula or TipoFormula.STANDARD
-            )
-
+            )        
         if prezzo_energia is None:
+            raise ValueError("Impossibile calcolare il prezzo dell'energia.")
             return None
+        
 
         # -------------------------
         # 2. QUOTE VARIABILI €/mese
@@ -107,7 +115,7 @@ class PrezzoLuce(ABCPrice):
         # -------------------------
         # 4. QUOTE FISSE €/mese
         # -------------------------
-        costo_fissi_vendita = (getattr(self.offerta_energia, "costi_fissi_anno", 0) or 0) / 12
+        costo_fissi_vendita = costo_fisso_anno / 12 if costo_fisso_anno is not None else 0
         costo_trasporto_fisso = (
             self.quota_fissa_trasporto_mese +
             self.potenza_impegnata * self.quota_potenza_kw_mese
@@ -127,12 +135,15 @@ class PrezzoLuce(ABCPrice):
             costo_oneri_fissi
         )
 
-        totale_ivato = totale_netto * (1 + self.iva)
-
-        return round(totale_ivato, 2)
+        if iva:
+            totale = totale_netto * (1 + self.iva)
+        else:
+            totale = totale_netto
+        return round(totale, 2)
 
     def calcola_accisa(self):
         """Calcola l'accisa mensile in base ai kWh esenti."""
+        logger.debug("Calcolo accisa mensile")
         if self.prima_casa and self.residenza and self.potenza_impegnata <= 3:
             kwh_tassati = max(0, self.consumo_mensile - self.kwh_esenti_accisa_mese)
         else:
@@ -143,29 +154,35 @@ class PrezzoLuce(ABCPrice):
     @property
     def iva(self) -> float:
         """Restituisce l'IVA applicabile."""
+        logger.debug("Recupero aliquota IVA")
         return 0.10 if self.residenza else 0.22
 
     def calcola_prezzo_offerta(self) -> float:
-
+        logger.info("Calcolo prezzo offerta mensile")
         return self._calcola_prezzo_mensile(
-            self.offerta_energia.prezzo_stimato_offerta_kwh,
-            self.offerta_energia.fee_offerta_kwh,
-            self.pun_index_eur_kwh_mean,
-            return_tipo_formula(self.offerta_energia.tipologia_formula_offerta)
+            prezzo_fisso_kwh=self.offerta_energia.prezzo_fisso_offerta,
+            fee_kwh=self.offerta_energia.fee_offerta,
+            pun=self.pun_index_eur_kwh_mean,
+            costo_fisso_anno=self.offerta_energia.costi_fissi_anno,
+            tipo_formula=return_tipo_formula(self.offerta_energia.tipologia_formula_offerta)
         )
 
     def calcola_prezzo_finita_medio(self) -> float:
+        logger.info("Calcolo prezzo finita medio mensile")
         return self._calcola_prezzo_mensile(
-            self.offerta_energia.prezzo_stimato_finita_kwh,
-            self.offerta_energia.fee_finita_kwh,
-            self.pun_index_eur_kwh_mean,
-            return_tipo_formula(self.offerta_energia.tipologia_formula_finita)
+            prezzo_fisso_kwh=self.offerta_energia.prezzo_fisso_finita,
+            fee_kwh=self.offerta_energia.fee_finita,
+            pun=self.pun_index_eur_kwh_mean,
+            tipo_formula=return_tipo_formula(self.offerta_energia.tipologia_formula_finita),
+            costo_fisso_anno=self.offerta_energia.costi_fissi_anno
         )
 
     def calcola_prezzo_finita_peggiore(self) -> float:
+        logger.info("Calcolo prezzo finita peggiore mensile")
         return self._calcola_prezzo_mensile(
-            self.offerta_energia.prezzo_stimato_finita_kwh,
-            self.offerta_energia.fee_finita_kwh,
-            self.pun_index_eur_kwh_worst,
-            return_tipo_formula(self.offerta_energia.tipologia_formula_finita)
+            prezzo_fisso_kwh=self.offerta_energia.prezzo_fisso_finita,
+            fee_kwh=self.offerta_energia.fee_finita,
+            pun=self.pun_index_eur_kwh_worst,
+            tipo_formula=return_tipo_formula(self.offerta_energia.tipologia_formula_finita),
+            costo_fisso_anno=self.offerta_energia.costi_fissi_anno
         )

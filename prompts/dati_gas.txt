@@ -1,97 +1,84 @@
-**Obiettivo**
-Analizza solo il PDF allegato ed estrai esclusivamente i valori tecnici dell’offerta **GAS**.
+Analizza solo il PDF allegato ed estrai esclusivamente i valori tecnici dell’offerta GAS.
 
-Se il PDF include luce e gas, ignora completamente la **luce**.
+Se il PDF include luce e gas, ignora completamente la luce.
 
-Nessuna deduzione: usa `null` se il valore non è numerico ed esplicitamente indicato.
+Nessuna deduzione: usa null se il valore non è numerico ed esplicitamente indicato.
 
-In caso di discrepanze, fa sempre fede la **Scheda Sintetica dei Costi**, se presente.
+Riconosci chiaramente il periodo “offerta” e, solo se presenti valori espliciti per il periodo successivo, compila il periodo “finita”.
+Altrimenti lascia tutti i campi “finita” a null e spiega il motivo nelle note.
 
-Riconosci chiaramente il periodo **“offerta”** e, solo se presenti valori espliciti per il periodo successivo, compila il periodo **“finita”**.
-Altrimenti lascia tutti i campi “finita” a `null` e spiega il motivo nelle note.
+Anche se i valori di prezzo coincidono tra periodo offerta e finita, non assumere che siano identici a livello di formula.
 
-Anche se i valori di prezzo coincidono tra periodo offerta e finita, **non assumere** che siano identici a livello di formula.
+Output (vincolante)
 
----
+Rispondi solo con un oggetto JSON valido, senza testo aggiuntivo.
 
-### Output (vincolante)
-
-Rispondi **solo** con un oggetto JSON valido, senza testo aggiuntivo.
-
-Separatore decimale: `.`
-Valute: `€/Smc`
+Separatore decimale: .
+Valute: €/Smc
 Tutte le chiavi devono essere presenti.
 
----
+Metodo di estrazione
 
-### Metodo di estrazione
+Priorità delle fonti:
 
-**Priorità delle fonti:**
+Corpo del contratto
 
-1. Scheda sintetica dei costi / scheda di confrontabilità
-2. Condizioni economiche
-3. Corpo del contratto
-4. Esempi di calcolo
+Condizioni economiche
 
-Se un valore compare in più sezioni, usa quello della **scheda sintetica**.
+Esempi di calcolo
 
-Estrai solo **valori numerici espliciti**.
+Ignora completamente eventuali schede sintetiche dei costi o schede di confrontabilità.
 
-Se un valore è indicato con periodicità diversa, **normalizzalo ad annuo**.
+Estrai solo valori numerici espliciti dal testo del contratto.
 
-Distingui sempre tra **Periodo di offerta** e **Periodo successivo (finita)**.
+Se un valore è indicato con periodicità diversa, normalizzalo ad annuo.
 
----
+Distingui sempre tra Periodo di offerta e Periodo successivo (finita).
 
-### Regole obbligatorie per prezzo, fee e formula
+Regole obbligatorie per prezzo, fee e formula
 
-**Prezzo vs formula**
+Prezzo vs formula
 
-* Se `prezzo_stimato_* ≠ null` ⇒ `tipologia_formula_* = "costante"`
-* Se `tipologia_formula_* ≠ "costante"` ⇒ `prezzo_stimato_* = null`
+Se prezzo_fisso_* ≠ null ⇒ tipologia_formula_* = "costante"
 
-**Fee**
+Se tipologia_formula_* ≠ "costante" ⇒ prezzo_fisso_* = null
 
-* Se il prezzo finale non è indicato, puoi estrarre **solo** `fee_*` come numero esplicito
-* Se non ci sono né prezzo né fee espliciti, lascia `null`
+Fee
 
-**Periodo successivo (“finita”)**
+Se il prezzo finale non è indicato, puoi estrarre solo fee_* come numero esplicito
 
-* Se non sono indicati valori espliciti per “finita”, lascia **tutti** i campi `null` e spiega nelle note (“periodo successivo non disponibile”)
+Se non ci sono né prezzo né fee espliciti, lascia null
 
----
+Periodo successivo (“finita”)
 
-### Divieto di deduzione matematica
+Se non sono indicati valori espliciti per “finita”, lascia tutti i campi null e spiega nelle note (“periodo successivo non disponibile”)
 
-Non calcolare prezzi non dichiarati, **anche se derivabili** da altri valori (PSV, spread, perdite, ecc.).
+Divieto di deduzione matematica
 
----
+Non calcolare prezzi non dichiarati, anche se derivabili da altri valori (PSV, spread, perdite, ecc.).
 
-### Controllo a posteriori
+Controllo a posteriori
 
-Dopo aver compilato il JSON, verifica che **ogni valore numerico o stringa** inserito sia effettivamente presente nel testo del PDF.
+Dopo aver compilato il JSON, verifica che ogni valore numerico o stringa inserito sia effettivamente presente nel testo del PDF.
 
-Se un valore non compare esplicitamente nel PDF, sostituiscilo con `null`.
+Se un valore non compare esplicitamente nel PDF, sostituiscilo con null.
 
-Le note devono riportare eventuali discrepanze o motivi per cui valori sono `null`.
+Le note devono riportare eventuali discrepanze o motivi per cui valori sono null.
 
----
+Campo note
 
-### Campo note
+Riporta solo scadenze, rinnovi, vincoli o incertezze documentali, inclusi motivi per cui “finita” non è disponibile.
 
-Riporta **solo** scadenze, rinnovi, vincoli o incertezze documentali, inclusi motivi per cui “finita” non è disponibile.
+Tipologia formula (GAS)
 
----
+standard: PSV (o indice gas equivalente) + Fee
 
-### Tipologia formula (GAS)
+ridotta: Come standard, senza componenti aggiuntive esplicitate
 
-* **standard**: PSV (o indice gas equivalente) + Fee
-* **ridotta**: Come standard, senza componenti aggiuntive esplicitate
-* **costante**: Prezzo fisso in €/Smc, non indicizzato
+costante: Prezzo fisso in €/Smc, non indicizzato
 
----
+Output finale
 
-### Output finale
+Un solo JSON
 
-* Un solo JSON
-* Nessun testo, lista o markdown
+Nessun testo, lista o markdown
