@@ -5,3 +5,11 @@ __pycache__/
 .vscode/
 /data/
 /cache/
+
+*.csv
+*.json
+*.parquet
+*.txt
+*.xlsx
+/logs/
+/temp/

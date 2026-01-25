@@ -5,53 +5,29 @@ Se il PDF include luce e gas, ignora completamente il gas.
 
 Nessuna deduzione: usa null se il valore non è numerico ed esplicitamente indicato.
 
-In caso di discrepanze, fa sempre fede la Scheda Sintetica dei Costi, se presente.
-
 Riconosci chiaramente il periodo “offerta” e, solo se presenti valori espliciti per il periodo successivo, compila il periodo “finita”. Altrimenti lascia tutti i campi “finita” a null e spiega il motivo nelle note.
 
 Anche se i valori di prezzo coincidono tra periodo offerta e finita, non assumere che siano identici a livello di formula.
 
 Output (vincolante)
-
 Rispondi solo con un oggetto JSON valido, senza testo aggiuntivo.
 
 Separatore decimale: .
-
 Valute: €/kWh
-
 Tutte le chiavi devono essere presenti.
-
-Struttura JSON obbligatoria
-
-{
-  "nome_offerta": "<stringa o null>",
-  "gestore": "<stringa o null>",
-  "prezzo_stimato_offerta_kwh": <numero (max 4 decimali) o null>,
-  "prezzo_stimato_finita_kwh": <numero (max 4 decimali) o null>,
-  "durata_mesi": <intero o null>,
-  "costi_fissi_anno": <numero (2 decimali) o null>,
-  "tipologia_formula_offerta": "<standard | ridotta | costante | null>",
-  "tipologia_formula_finita": "<standard | ridotta | costante | null>",
-  "fee_offerta_kwh": <numero (max 4 decimali) o null>,
-  "fee_finita_kwh": <numero (max 4 decimali) o null>,
-  "note": "<stringa o null>"
-}
-
 
 Metodo di estrazione
 Priorità delle fonti:
 
-Scheda sintetica dei costi / scheda di confrontabilità
+Corpo del contratto
 
 Condizioni economiche
 
-Corpo del contratto
-
 Esempi di calcolo
 
-Se un valore compare in più sezioni, usa quello della scheda sintetica.
+Ignora completamente eventuali schede sintetiche dei costi o schede di confrontabilità.
 
-Estrai solo valori numerici espliciti.
+Estrai solo valori numerici espliciti dal testo del contratto.
 
 Se un valore è indicato con periodicità diversa, normalizzalo ad annuo.
 
@@ -61,9 +37,9 @@ Regole obbligatorie per prezzo, fee e formula
 
 Prezzo vs formula:
 
-Se prezzo_stimato_* ≠ null ⇒ tipologia_formula_* = "costante"
+Se prezzo_fisso_* ≠ null ⇒ tipologia_formula_* = "costante"
 
-Se tipologia_formula_* ≠ "costante" ⇒ prezzo_stimato_* = null
+Se tipologia_formula_* ≠ "costante" ⇒ prezzo_fisso_* = null
 
 Fee:
 
@@ -73,7 +49,7 @@ Se non ci sono né prezzo né fee espliciti, lascia null.
 
 Periodo successivo (“finita”):
 
-Se non sono indicati valori espliciti per “finita”, lascia tutti i campi null e spiega nelle note (“periodo successivo non disponibile”).
+Se non sono indicati valori espliciti per “finita”, lascia tutti i campi null e spiega nelle note: “periodo successivo non disponibile”.
 
 Divieto di deduzione matematica:
 
@@ -85,13 +61,11 @@ Dopo aver compilato il JSON, verifica che ogni valore numerico o stringa inserit
 
 Se un valore non compare esplicitamente nel PDF, sostituiscilo con null.
 
-Le note devono riportare eventuali discrepanze o motivi per cui valori sono null.
-
-Campo note
+Campo note:
 
 Riporta solo scadenze, rinnovi, vincoli o incertezze documentali, inclusi motivi per cui “finita” non è disponibile.
 
-Tipologia formula
+Tipologia formula:
 
 standard: PUN Index GME × (1 + perdite di rete) + Fee + Indice GO
 
@@ -99,7 +73,7 @@ ridotta: Come standard, senza Indice GO
 
 costante: Prezzo fisso in €/kWh, non indicizzato
 
-Output finale
+Output finale:
 
 Un solo JSON
 
