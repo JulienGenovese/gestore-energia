@@ -24,26 +24,6 @@ Tutte le chiavi devono essere presenti.
 
 ---
 
-### Struttura JSON obbligatoria
-
-```json
-{
-  "nome_offerta": "<stringa o null>",
-  "gestore": "<stringa o null>",
-  "prezzo_stimato_offerta_smc": <numero (max 4 decimali) o null>,
-  "prezzo_stimato_finita_smc": <numero (max 4 decimali) o null>,
-  "durata_mesi": <intero o null>,
-  "costi_fissi_anno": <numero (2 decimali) o null>,
-  "tipologia_formula_offerta": "<standard | ridotta | costante | null>",
-  "tipologia_formula_finita": "<standard | ridotta | costante | null>",
-  "fee_offerta_smc": <numero (max 4 decimali) o null>,
-  "fee_finita_smc": <numero (max 4 decimali) o null>,
-  "note": "<stringa o null>"
-}
-```
-
----
-
 ### Metodo di estrazione
 
 **Priorità delle fonti:**
